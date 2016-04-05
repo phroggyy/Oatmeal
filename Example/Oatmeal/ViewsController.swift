@@ -12,7 +12,7 @@ import Foundation
 
 class ViewsController: UIViewController
 {
-
+    
     @IBOutlet weak var Hello: UILabel!
     
     @IBOutlet weak var helloOatmeal: UIButton!
@@ -29,24 +29,15 @@ class ViewsController: UIViewController
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        let github = Github()
+        github.name = "Oatmeal"
+        github.watchers_count = NSNumber(int : 20)
+        let fileStorage = FileStorage()
+
+        fileStorage.set(github)
         
         self.setEvents()
         self.checkDependencies()
-        
-        
-        if let config : Configuration = ~Oats(), players = config.get("GameParams.Players") as? [String:AnyObject]
-        {
-            print(players["Snake"])
-        }
-        
-        if let cache : FileCache = ~Oats()
-        {
-            cache.get("github", completion: {
-                (git:Github) in
-            })
-        }
-        
-        
         
         // Do any additional setup after loading the view, typically from a nib.
     }
@@ -59,13 +50,14 @@ class ViewsController: UIViewController
             events.listenFor("presented", global: true, handler: {
                 event in
                 
-                 self.request(http)
+                self.request(http)
             })
         }
     }
     
     func request(http : Networking)
     {
+        //Multiple examples of serialization from Networking -> Model -> Cache -> Model
         http.GET("https://api.spotify.com/v1/tracks/0eGsygTp906u18L0Oimnem", completion: {
             (song : Song, success) in
             
@@ -80,7 +72,6 @@ class ViewsController: UIViewController
                     {
                         let MrBrightside = json["object"]
                         let albumData    = json["object"]["album"]["object"].dictionaryValue
-                        print(MrBrightside)
                         let song = Song()
                         let album = Album()
                         song.name = MrBrightside["name"].stringValue
@@ -89,27 +80,29 @@ class ViewsController: UIViewController
                         album.href = albumData["href"]?.stringValue
                         if let markets = albumData["available_markets"]?.arrayValue
                         {
-                              var available_markets = [String]()
-                              for i in markets
-                              {
+                            var available_markets = [String]()
+                            for i in markets
+                            {
                                 available_markets.append(i.stringValue)
-                              }
-                              album.available_markets = available_markets
+                            }
+                            album.available_markets = available_markets
                         }
                         print(album)
                     }
                     
                 })
             }
-            print(song.name)
-            print(song.album?.name)
-            print(song.album?.available_markets)
         })
-    
-        http.GET("https://api.github.com/repos/mikenolimits/Oatmeal", completion:  {
-              (response:Github,success) in
+        
+        http.GET("https://api.github.com/repos/OatmealCode/Oatmeal", completion:  {
+            (response:Github,success) in
             
-              print(response.name)
+            if let events : Events = ~Oats()
+            {
+                events.fire("setText",payload: ["view":self, "framework" : response])
+            }
+            
+            print(response.name)
         })
         
     }
@@ -129,6 +122,5 @@ class ViewsController: UIViewController
         super.didReceiveMemoryWarning()
         // Dispose of any resources that can be recreated.
     }
-
+    
 }
-

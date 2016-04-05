@@ -8,17 +8,26 @@ public class Promise<T> {
   private var error: ErrorType?
   private var value: T?
   private var canceled = false
+  private let successLock: ReadWriteLock = PThreadReadWriteLock()
+  private let failureLock: ReadWriteLock = PThreadReadWriteLock()
+  private let cancelLock: ReadWriteLock = PThreadReadWriteLock()
   
   /// The Future associated to this Promise
-  public lazy var future: Future<T> = {
-    return Future(promise: self)
-  }()
+  private weak var _future: Future<T>?
+  public var future: Future<T> {
+    if let _future = _future {
+      return _future
+    }
+    
+    let newFuture = Future(promise: self)
+    _future = newFuture
+    return newFuture
+  }
   
   /**
   Creates a new Promise
   */
-  public init() {
-  }
+  public init() {}
   
   /**
   Initializes a new Promise and makes it immediately succeed with the given value
@@ -75,6 +84,20 @@ public class Promise<T> {
     return self
   }
   
+  private func clearListeners() {
+    successLock.withWriteLock {
+      successListeners.removeAll()
+    }
+    
+    failureLock.withWriteLock {
+      failureListeners.removeAll()
+    }
+    
+    cancelLock.withWriteLock {
+      cancelListeners.removeAll()
+    }
+  }
+  
   /**
   Makes the Promise succeed with a value
   
@@ -89,9 +112,13 @@ public class Promise<T> {
     
     self.value = value
     
-    for listener in successListeners {
-      listener(value)
+    successLock.withReadLock {
+      successListeners.forEach { listener in
+        listener(value)
+      }
     }
+    
+    clearListeners()
   }
   
   /**
@@ -108,9 +135,13 @@ public class Promise<T> {
     
     self.error = error
     
-    for listener in failureListeners {
-      listener(error)
+    failureLock.withReadLock {
+      failureListeners.forEach { listener in
+        listener(error)
+      }
     }
+    
+    clearListeners()
   }
   
   /**
@@ -125,9 +156,13 @@ public class Promise<T> {
     
     canceled = true
     
-    for listener in cancelListeners {
-      listener()
+    cancelLock.withReadLock {
+      cancelListeners.forEach { listener in
+        listener()
+      }
     }
+    
+    clearListeners()
   }
   
   /**
@@ -141,7 +176,9 @@ public class Promise<T> {
     if canceled {
       callback()
     } else {
-      cancelListeners.append(callback)
+      cancelLock.withWriteLock {
+        cancelListeners.append(callback)
+      }
     }
     
     return self
@@ -158,7 +195,9 @@ public class Promise<T> {
     if let value = value {
       callback(value)
     } else {
-      successListeners.append(callback)
+      successLock.withWriteLock {
+        successListeners.append(callback)
+      }
     }
     
     return self
@@ -175,7 +214,9 @@ public class Promise<T> {
     if let error = error {
       callback(error)
     } else {
-      failureListeners.append(callback)
+      failureLock.withWriteLock {
+        failureListeners.append(callback)
+      }
     }
     
     return self
@@ -184,21 +225,21 @@ public class Promise<T> {
   /**
   Adds a listener for both success and failure events of this Promise
   
-  - parameter completion: The closure that should be called when the Promise completes (succeeds or fails), taking both an optional value in case the Promise succeeded and an optional error in case the Promise failed as parameters. If the Promise is canceled, both values will be nil
+  - parameter completion: The closure that should be called when the Promise completes (succeeds or fails), taking a result with value .Success in case the Promise succeeded and .Error in case the Promise failed as parameter. If the Promise is canceled, the result will be .Cancelled
   
   - returns: The updated Promise
   */
-  public func onCompletion(completion: (value: T?, error: ErrorType?) -> Void) -> Promise<T> {
+  public func onCompletion(completion: (result: Result<T>) -> Void) -> Promise<T> {
     if let error = error {
-      completion(value: nil, error: error)
+      completion(result: .Error(error))
     } else if let value = value {
-      completion(value: value, error: nil)
+      completion(result: .Success(value))
     } else if canceled {
-      completion(value: nil, error: nil)
+      completion(result: .Cancelled)
     } else {
-      onSuccess { completion(value: $0, error: nil) }
-      onFailure { completion(value: nil, error: $0) }
-      onCancel { completion(value: nil, error: nil) }
+      onSuccess { completion(result: .Success($0)) }
+      onFailure { completion(result: .Error($0)) }
+      onCancel { completion(result: .Cancelled) }
     }
     
     return self
