@@ -165,7 +165,7 @@ public class Networking : NSObject,Resolveable
             {
             case .ShouldSendUrlAndReturnJson, .ShouldSendJsonAndReturnIt:
                 
-                manager.request(route.compose()).responseJSON { result in
+                manager.request(currentRoute.compose()).responseJSON { result in
                     var handler = self.getHandler(result.response,result: result.result)
                     handler     = self.adjustToExpectation(route, handler: handler)
                     self.pendingRequest = false
@@ -173,7 +173,7 @@ public class Networking : NSObject,Resolveable
                     completion(response: handler)
                 }
             case .ShouldSendJsonAndReturnString,.ShouldSendUrlAndReturnString:
-                manager.request(route.compose()).responseString{ result in
+                manager.request(currentRoute.compose()).responseString{ result in
                     var handler = self.getHandler(result.response,result: result.result)
                     handler     = self.adjustToExpectation(route, handler: handler)
                     self.pendingRequest = false
